@@ -1,7 +1,12 @@
 import os
-from flask import Flask, request, jsonify
+import sys
+
+# Ensure Python includes the current working directory in the search path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from flask import Flask, jsonify, request
 from database import db
-from models import Farmer, AuditSubmission
+from models import AuditSubmission, Farmer
 
 app = Flask(__name__)
 
