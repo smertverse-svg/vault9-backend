@@ -1,35 +1,52 @@
 import os
-import sys
-import requests
 from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
+import requests
+from google import genai
+from google.genai import types
 
-# Ensure Python includes the current working directory in the search path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from database import db
-from models import AuditSubmission, Farmer
-
+# Initialize Flask app
 app = Flask(__name__)
 
-# Configure database
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///vault9.db')
+# Database configuration
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI', 'sqlite:///vault9.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db.init_app(app)
+db = SQLAlchemy(app)
 
+# Define Conversation History Model for Persistence
+class ConversationHistory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    sender_phone = db.Column(db.String(50), index=True, nullable=False)
+    role = db.Column(db.String(20), nullable=False)  # 'user' or 'assistant'
+    message = db.Column(db.Text, nullable=False)
+
+# Initialize database tables within app context
 with app.app_context():
     db.create_all()
 
+# Meta & WhatsApp Configuration
 VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "vault9_secure_verify_token")
-WHATSAPP_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", os.getenv("WHATSAPP_TOKEN", "YOUR_META_PERMANENT_OR_TEMP_TOKEN"))
+WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "YOUR_META_PERMANENT_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID", "1387329541133056")
+
+# Initialize the Gemini client
+client = genai.Client()
+
+VAULT9_SYSTEM_INSTRUCTION = (
+    "You are Vault 9 (Bridge Muunganisha), a ruthless, high-level cognitive coach and mentor. "
+    "Your job is to challenge assumptions, stress-test ideas across the 7 Pillars of Society "
+    "and 9 Capitals of Wealth, and demand bulletproof thinking. Never offer comforting validation. "
+    "Keep responses sharp, provocative, and concise enough for a WhatsApp message interface. "
+    "Reference past inconsistencies if the user contradicts previous statements."
+)
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"status": "Vault 9 Backend is Live", "pillar": "Bridge Muunganisha"}), 200
+    return jsonify({"status": "Vault 9 Backend is Live", "pillar": "Bridge Muunganisha", "persistence": "Active"}), 200
 
 # 1. GET /webhook: Meta Webhook Verification Handshake
 @app.route("/webhook", methods=["GET"])
-def verify_webhook():
+def verify():
     mode = request.args.get("hub.mode")
     token = request.args.get("hub.verify_token")
     challenge = request.args.get("hub.challenge")
@@ -38,83 +55,97 @@ def verify_webhook():
         if mode == "subscribe" and token == VERIFY_TOKEN:
             return challenge, 200
         else:
-            return "Verification failed: Token mismatch", 403
+            return "Verification token mismatch", 403
     return "Invalid verification request", 400
 
-# 2. POST /webhook: Ingress for Incoming WhatsApp Messages & Cognitive Engine
+# 2. POST /webhook: Incoming WhatsApp Message Listener
 @app.route("/webhook", methods=["POST"])
-def handle_webhook():
-    data = request.get_json()
-    
+def webhook():
+    body = request.get_json()
+    print("Incoming WhatsApp Payload:", body)
+
     try:
-        # Parse Meta WhatsApp Cloud API incoming payload structure
-        if data.get("object") == "whatsapp_business_account":
-            for entry in data.get("entry", []):
-                for change in entry.get("changes", []):
+        if body and "entry" in body:
+            for entry in body["entry"]:
+                changes = entry.get("changes", [])
+                for change in changes:
                     value = change.get("value", {})
-                    messages = value.get("messages")
-                    
+                    messages = value.get("messages", [])
                     if messages:
                         message = messages[0]
                         sender_phone = message.get("from")
-                        msg_body = message.get("text", {}).get("body", "").strip()
-                        
-                        # Trigger Vault 9's Ruthless Mentor Cognitive Response
-                        generate_cognitive_response(sender_phone, msg_body)
-                        
-            return jsonify({"status": "EVENT_RECEIVED"}), 200
+                        message_text = message.get("text", {}).get("body")
+
+                        if sender_phone and message_text:
+                            process_incoming_message(sender_phone, message_text)
+
+        return jsonify({"status": "EVENT_RECEIVED"}), 200
     except Exception as e:
-        print(f"Error processing webhook payload: {e}")
+        print(f"Webhook Error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-def generate_cognitive_response(recipient_phone, user_input):
-    """
-    Vault 9 Cognitive Engine: Analyzes user input across the 7 Pillars and 
-    9 Capitals of Wealth, acting as a ruthless mentor challenging assumptions.
-    """
-    user_lower = user_input.lower()
-    
-    # Example cognitive routing logic challenging the user's mental bandwidth
-    if "pillar" in user_lower or "society" in user_lower:
-        reply = (
-            "🧠 **Vault 9 Cognitive Audit [Pillars of Society]**: "
-            "You speak of societal transformation, yet your current framework lacks structural depth. "
-            "Which of the 7 pillars (Economy, Education, Health, Governance, Security, Infrastructure, Culture) "
-            "does your current strategy actually fortify? Defend your assumptions or watch your model collapse."
-        )
-    elif "wealth" in user_lower or "capital" in user_lower:
-        reply = (
-            "💎 **Vault 9 Wealth Scan [9 Capitals]**: "
-            "You are fixated solely on financial capital. Where are your strategies for Intellectual, "
-            "Social, and Cultural capital? If your network and cognitive reserves are stagnant, "
-            "your monetary capital is a ticking clock. What is your actual leverage?"
-        )
-    else:
-        reply = (
-            f"⚡ **Vault 9 Stress Test**: "
-            f"I received your input: *\"{user_input}\"*. That sounds like comforting validation rather than bulletproof thinking. "
-            "Are you operating at peak cognitive capacity, or are you settling for mediocre execution? "
-            "State your core objective clearly across the 7 Pillars so we can stress test it properly."
-        )
-        
-    send_whatsapp_message(recipient_phone, reply)
+def process_incoming_message(sender_phone, message_text):
+    try:
+        # 1. Save user message to database
+        user_msg = ConversationHistory(sender_phone=sender_phone, role='user', message=message_text)
+        db.session.add(user_msg)
+        db.session.commit()
 
-def send_whatsapp_message(recipient_phone, message_text):
-    """Sends an automated reply back to the user via Meta Cloud API."""
+        # 2. Retrieve last 10 messages for context window
+        recent_chats = ConversationHistory.query.filter_by(sender_phone=sender_phone)\
+            .order_by(ConversationHistory.id.desc()).limit(10).all()
+        recent_chats.reverse() # Oldest to newest
+
+        # 3. Build contents payload for Gemini maintaining history
+        contents = []
+        for chat in recent_chats:
+            role_tag = "user" if chat.role == 'user' else "model"
+            contents.append(types.Content(
+                role=role_tag,
+                parts=[types.Part.from_text(text=chat.message)]
+            ))
+
+        # 4. Generate dynamic response via Gemini 2.5 Flash with history
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=VAULT9_SYSTEM_INSTRUCTION,
+                temperature=0.7,
+                max_output_tokens=300,
+            ),
+        )
+        reply_text = response.text
+
+        # 5. Save assistant reply to database
+        assistant_msg = ConversationHistory(sender_phone=sender_phone, role='assistant', message=reply_text)
+        db.session.add(assistant_msg)
+        db.session.commit()
+
+    except Exception as e:
+        print(f"Gemini API / DB Error: {e}")
+        reply_text = "🧠 *Vault 9 Error*: Cognitive memory sync failed. Defend your input again."
+
+    send_whatsapp_message(sender_phone, reply_text)
+
+def send_whatsapp_message(recipient_phone, text_message):
+    url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
     headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json",
+        "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
+        "Content-Type": "application/json"
     }
     payload = {
         "messaging_product": "whatsapp",
         "to": recipient_phone,
         "type": "text",
-        "text": {"body": message_text},
+        "text": {"body": text_message}
     }
-    url = f"https://graph.facebook.com/v25.0/{PHONE_NUMBER_ID}/messages"
-    response = requests.post(url, json=payload, headers=headers)
+    
+    response = requests.post(url, headers=headers, json=payload)
     if response.status_code != 200:
-        print(f"Failed to send WhatsApp message: {response.text}")
+        print(f"Failed to send WhatsApp message: {response.json()}")
+    else:
+        print("WhatsApp message sent successfully.")
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
