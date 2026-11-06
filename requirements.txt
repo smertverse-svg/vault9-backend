@@ -1,6 +1,6 @@
-Flask
-Flask-SQLAlchemy
+flask
 requests
-google-genai
-psycopg2-binary
+flask-sqlalchemy
+anthropic
 gunicorn
+psycopg2-binary
