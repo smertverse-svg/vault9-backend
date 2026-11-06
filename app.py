@@ -1,4 +1,5 @@
 import os
+import time
 from flask import Flask, request, jsonify
 import requests
 from flask_sqlalchemy import SQLAlchemy
@@ -103,8 +104,8 @@ def process_incoming_message(sender_phone, message_text):
             "parts": [{"text": message_text}]
         })
 
-        # 3. Call Gemini REST API directly using gemini-3.8-flash
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
+        # 3. Call Gemini REST API using gemini-1.5-flash with automatic retries for transient 503/timeout errors
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
         
         payload = {
             "system_instruction": {
@@ -117,18 +118,36 @@ def process_incoming_message(sender_phone, message_text):
             }
         }
 
-        resp = requests.post(api_url, json=payload, timeout=30)
-        resp_data = resp.json()
+        reply_text = None
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                resp = requests.post(api_url, json=payload, timeout=(5, 45))
+                resp_data = resp.json()
 
-        if resp.status_code == 200:
-            candidates = resp_data.get("candidates", [])
-            if candidates:
-                reply_text = candidates[0]["content"]["parts"][0]["text"]
-            else:
-                reply_text = "🧠 *Vault 9*: Empty response received."
-        else:
-            err_msg = resp_data.get("error", {}).get("message", "Unknown API error")
-            reply_text = f"🧠 *Vault 9 API Error*: {err_msg}"
+                if resp.status_code == 200:
+                    candidates = resp_data.get("candidates", [])
+                    if candidates:
+                        reply_text = candidates[0]["content"]["parts"][0]["text"]
+                    break
+                elif resp.status_code == 503 and attempt < max_retries - 1:
+                    print(f"503 High Demand hit. Retrying attempt {attempt + 1}...")
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                else:
+                    err_msg = resp_data.get("error", {}).get("message", "Unknown API error")
+                    reply_text = f"🧠 *Vault 9 API Error*: {err_msg}"
+                    break
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as req_err:
+                if attempt < max_retries - 1:
+                    print(f"Network timeout/error ({req_err}). Retrying attempt {attempt + 1}...")
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                else:
+                    reply_text = "🧠 *Vault 9 Error*: Upstream Google API timed out. Please try again in a moment."
+
+        if not reply_text:
+            reply_text = "🧠 *Vault 9 Error*: Service temporarily unavailable."
 
         # 4. Save BOTH user message and model reply to database
         user_msg = ConversationHistory(sender_phone=sender_phone, role='user', message=message_text)
