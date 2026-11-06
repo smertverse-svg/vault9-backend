@@ -26,7 +26,7 @@ with app.app_context():
 VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "vault9_secure_verify_token")
 WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "YOUR_META_PERMANENT_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID", "1387329541133056")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 VAULT9_SYSTEM_INSTRUCTION = (
     "You are Vault 9 (Bridge Muunganisha), a ruthless, high-level cognitive coach and mentor. "
@@ -103,8 +103,8 @@ def process_incoming_message(sender_phone, message_text):
             "parts": [{"text": message_text}]
         })
 
-        # 3. Call Gemini REST API directly (lightweight, zero OOM footprint)
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+        # 3. Call Gemini REST API directly using gemini-3.8-flash
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
         
         payload = {
             "system_instruction": {
