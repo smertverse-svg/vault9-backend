@@ -20,7 +20,7 @@ with app.app_context():
     db.create_all()
 
 VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "vault9_secure_verify_token")
-WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN", "YOUR_META_PERMANENT_OR_TEMP_TOKEN")
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", os.getenv("WHATSAPP_TOKEN", "YOUR_META_PERMANENT_OR_TEMP_TOKEN"))
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID", "1387329541133056")
 
 @app.route("/", methods=["GET"])
