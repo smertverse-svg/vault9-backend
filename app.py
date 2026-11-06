@@ -83,6 +83,7 @@ def webhook():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 def process_incoming_message(sender_phone, message_text):
+    reply_text = None
     try:
         # 1. Retrieve last 5 messages from database
         recent_chats = ConversationHistory.query.filter_by(sender_phone=sender_phone)\
@@ -104,8 +105,8 @@ def process_incoming_message(sender_phone, message_text):
             "parts": [{"text": message_text}]
         })
 
-        # 3. Call Gemini REST API using gemini-1.5-flash with automatic retries for transient 503/timeout errors
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={GEMINI_API_KEY}"
+        # 3. Call Gemini REST API with automatic retries for transient 503/timeout errors
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
         
         payload = {
             "system_instruction": {
@@ -118,7 +119,6 @@ def process_incoming_message(sender_phone, message_text):
             }
         }
 
-        reply_text = None
         max_retries = 3
         for attempt in range(max_retries):
             try:
