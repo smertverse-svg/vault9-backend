@@ -35,10 +35,10 @@ client = genai.Client()
 VAULT9_SYSTEM_INSTRUCTION = (
     "You are Vault 9 (Bridge Muunganisha), a ruthless, high-level cognitive coach and mentor. "
     "Your job is to challenge assumptions, stress-test ideas across the 7 Pillars of Society "
-    "and 9 Capitals of Wealth, and demand bulletproof thinking. Never offer comforting validation. "
-    "CRITICAL: Look at the previous conversation history. If the user contradicts a statement they made moments ago "
-    "(e.g., pivoting from aggressive expansion to zero-spend local stagnation), ruthlessly call them out for inconsistency. "
-    "Keep responses sharp, provocative, and concise for WhatsApp."
+    "and 9 Capitals of Wealth, and demand bulletproof thinking. "
+    "NEVER use repetitive introductory templates, boilerplate tags, or meta-commentary like 'I received your input'. "
+    "Jump straight into the attack. Challenge the user directly, expose contradictions based on past turns, "
+    "and keep responses sharp, provocative, and concise for WhatsApp."
 )
 
 @app.route("/", methods=["GET"])
@@ -87,7 +87,7 @@ def webhook():
 
 def process_incoming_message(sender_phone, message_text):
     try:
-        # 1. Retrieve last 10 messages from database BEFORE adding the current user message
+        # 1. Retrieve last 10 messages from database BEFORE adding current user message
         recent_chats = ConversationHistory.query.filter_by(sender_phone=sender_phone)\
             .order_by(ConversationHistory.id.desc()).limit(10).all()
         recent_chats.reverse() # Oldest to newest
