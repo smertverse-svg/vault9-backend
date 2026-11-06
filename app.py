@@ -105,8 +105,8 @@ def process_incoming_message(sender_phone, message_text):
             "parts": [{"text": message_text}]
         })
 
-        # 3. Call Gemini REST API with automatic retries for transient 503/timeout errors
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        # 3. Call Gemini REST API using gemini-3.8-flash with automatic retries for transient errors
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
         
         payload = {
             "system_instruction": {
