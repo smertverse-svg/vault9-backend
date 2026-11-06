@@ -17,7 +17,7 @@ db = SQLAlchemy(app)
 class ConversationHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     sender_phone = db.Column(db.String(50), index=True, nullable=False)
-    role = db.Column(db.String(20), nullable=False)  # 'user' or 'assistant'
+    role = db.Column(db.String(20), nullable=False)  # 'user' or 'model'
     message = db.Column(db.Text, nullable=False)
 
 # Initialize database tables within app context
@@ -36,8 +36,9 @@ VAULT9_SYSTEM_INSTRUCTION = (
     "You are Vault 9 (Bridge Muunganisha), a ruthless, high-level cognitive coach and mentor. "
     "Your job is to challenge assumptions, stress-test ideas across the 7 Pillars of Society "
     "and 9 Capitals of Wealth, and demand bulletproof thinking. Never offer comforting validation. "
-    "Keep responses sharp, provocative, and concise enough for a WhatsApp message interface. "
-    "Reference past inconsistencies if the user contradicts previous statements."
+    "CRITICAL: Look at the previous conversation history. If the user contradicts a statement they made moments ago "
+    "(e.g., pivoting from aggressive expansion to zero-spend local stagnation), ruthlessly call them out for inconsistency. "
+    "Keep responses sharp, provocative, and concise for WhatsApp."
 )
 
 @app.route("/", methods=["GET"])
@@ -86,45 +87,47 @@ def webhook():
 
 def process_incoming_message(sender_phone, message_text):
     try:
-        # 1. Save user message to database
-        user_msg = ConversationHistory(sender_phone=sender_phone, role='user', message=message_text)
-        db.session.add(user_msg)
-        db.session.commit()
-
-        # 2. Retrieve last 10 messages for context window
+        # 1. Retrieve last 10 messages from database BEFORE adding the current user message
         recent_chats = ConversationHistory.query.filter_by(sender_phone=sender_phone)\
             .order_by(ConversationHistory.id.desc()).limit(10).all()
         recent_chats.reverse() # Oldest to newest
 
-        # 3. Build contents payload for Gemini maintaining history
+        # 2. Build contents payload for Gemini maintaining history
         contents = []
         for chat in recent_chats:
-            role_tag = "user" if chat.role == 'user' else "model"
             contents.append(types.Content(
-                role=role_tag,
+                role=chat.role,
                 parts=[types.Part.from_text(text=chat.message)]
             ))
+        
+        # Append the current user message to the live payload
+        contents.append(types.Content(
+            role="user",
+            parts=[types.Part.from_text(text=message_text)]
+        ))
 
-        # 4. Generate dynamic response via Gemini 2.5 Flash with history
+        # 3. Generate dynamic response via Gemini 2.5 Flash with full context
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=VAULT9_SYSTEM_INSTRUCTION,
-                temperature=0.7,
-                max_output_tokens=300,
+                temperature=0.85,
+                max_output_tokens=350,
             ),
         )
         reply_text = response.text
 
-        # 5. Save assistant reply to database
-        assistant_msg = ConversationHistory(sender_phone=sender_phone, role='assistant', message=reply_text)
+        # 4. Save BOTH user message and model reply to database for future turns
+        user_msg = ConversationHistory(sender_phone=sender_phone, role='user', message=message_text)
+        assistant_msg = ConversationHistory(sender_phone=sender_phone, role='model', message=reply_text)
+        db.session.add(user_msg)
         db.session.add(assistant_msg)
         db.session.commit()
 
     except Exception as e:
         print(f"Gemini API / DB Error: {e}")
-        reply_text = "🧠 *Vault 9 Error*: Cognitive memory sync failed. Defend your input again."
+        reply_text = f"🧠 *Vault 9 Error*: {str(e)}"
 
     send_whatsapp_message(sender_phone, reply_text)
 
