@@ -1,9 +1,7 @@
 import os
 from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
 import requests
-from google import genai
-from google.genai import types
+from flask_sqlalchemy import SQLAlchemy
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -28,9 +26,7 @@ with app.app_context():
 VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "vault9_secure_verify_token")
 WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "YOUR_META_PERMANENT_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID", "1387329541133056")
-
-# Initialize the Gemini client
-client = genai.Client()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
 
 VAULT9_SYSTEM_INSTRUCTION = (
     "You are Vault 9 (Bridge Muunganisha), a ruthless, high-level cognitive coach and mentor. "
@@ -87,36 +83,52 @@ def webhook():
 
 def process_incoming_message(sender_phone, message_text):
     try:
-        # 1. Retrieve last 5 messages (optimized to save RAM on Render free tier)
+        # 1. Retrieve last 5 messages from database
         recent_chats = ConversationHistory.query.filter_by(sender_phone=sender_phone)\
             .order_by(ConversationHistory.id.desc()).limit(5).all()
         recent_chats.reverse() # Oldest to newest
 
-        # 2. Build contents payload for Gemini maintaining history
+        # 2. Build contents payload for Gemini REST API
         contents = []
         for chat in recent_chats:
-            contents.append(types.Content(
-                role=chat.role,
-                parts=[types.Part.from_text(text=chat.message)]
-            ))
+            gemini_role = "user" if chat.role == "user" else "model"
+            contents.append({
+                "role": gemini_role,
+                "parts": [{"text": chat.message}]
+            })
         
-        # Append the current user message to the live payload
-        contents.append(types.Content(
-            role="user",
-            parts=[types.Part.from_text(text=message_text)]
-        ))
+        # Append current user message
+        contents.append({
+            "role": "user",
+            "parts": [{"text": message_text}]
+        })
 
-        # 3. Generate dynamic response via gemini-3.8-flash with optimized memory footprint
-        response = client.models.generate_content(
-            model='gemini-3.8-flash',
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=VAULT9_SYSTEM_INSTRUCTION,
-                temperature=0.85,
-                max_output_tokens=300,
-            ),
-        )
-        reply_text = response.text
+        # 3. Call Gemini REST API directly (lightweight, zero OOM footprint)
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+        
+        payload = {
+            "system_instruction": {
+                "parts": [{"text": VAULT9_SYSTEM_INSTRUCTION}]
+            },
+            "contents": contents,
+            "generationConfig": {
+                "temperature": 0.85,
+                "maxOutputTokens": 300
+            }
+        }
+
+        resp = requests.post(api_url, json=payload, timeout=30)
+        resp_data = resp.json()
+
+        if resp.status_code == 200:
+            candidates = resp_data.get("candidates", [])
+            if candidates:
+                reply_text = candidates[0]["content"]["parts"][0]["text"]
+            else:
+                reply_text = "🧠 *Vault 9*: Empty response received."
+        else:
+            err_msg = resp_data.get("error", {}).get("message", "Unknown API error")
+            reply_text = f"🧠 *Vault 9 API Error*: {err_msg}"
 
         # 4. Save BOTH user message and model reply to database
         user_msg = ConversationHistory(sender_phone=sender_phone, role='user', message=message_text)
@@ -126,7 +138,7 @@ def process_incoming_message(sender_phone, message_text):
         db.session.commit()
 
     except Exception as e:
-        print(f"Gemini API / DB Error: {e}")
+        print(f"Server / DB Error: {e}")
         reply_text = f"🧠 *Vault 9 Error*: {str(e)}"
 
     send_whatsapp_message(sender_phone, reply_text)
