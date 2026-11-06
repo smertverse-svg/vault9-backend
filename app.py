@@ -106,9 +106,9 @@ def process_incoming_message(sender_phone, message_text):
             parts=[types.Part.from_text(text=message_text)]
         ))
 
-        # 3. Generate dynamic response via Gemini 3.8 Flash with full context
+        # 3. Generate dynamic response via Gemini 2.5 with full context
         response = client.models.generate_content(
-            model='gemini-3.8-flash',
+            model='gemini-2.5',
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=VAULT9_SYSTEM_INSTRUCTION,
