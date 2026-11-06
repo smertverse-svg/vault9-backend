@@ -87,9 +87,9 @@ def webhook():
 
 def process_incoming_message(sender_phone, message_text):
     try:
-        # 1. Retrieve last 10 messages from database BEFORE adding current user message
+        # 1. Retrieve last 5 messages (optimized to save RAM on Render free tier)
         recent_chats = ConversationHistory.query.filter_by(sender_phone=sender_phone)\
-            .order_by(ConversationHistory.id.desc()).limit(10).all()
+            .order_by(ConversationHistory.id.desc()).limit(5).all()
         recent_chats.reverse() # Oldest to newest
 
         # 2. Build contents payload for Gemini maintaining history
@@ -106,19 +106,19 @@ def process_incoming_message(sender_phone, message_text):
             parts=[types.Part.from_text(text=message_text)]
         ))
 
-        # 3. Generate dynamic response via gemini-3.8-flash with full context
+        # 3. Generate dynamic response via gemini-3.8-flash with optimized memory footprint
         response = client.models.generate_content(
             model='gemini-3.8-flash',
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=VAULT9_SYSTEM_INSTRUCTION,
                 temperature=0.85,
-                max_output_tokens=350,
+                max_output_tokens=300,
             ),
         )
         reply_text = response.text
 
-        # 4. Save BOTH user message and model reply to database for future turns
+        # 4. Save BOTH user message and model reply to database
         user_msg = ConversationHistory(sender_phone=sender_phone, role='user', message=message_text)
         assistant_msg = ConversationHistory(sender_phone=sender_phone, role='model', message=reply_text)
         db.session.add(user_msg)
