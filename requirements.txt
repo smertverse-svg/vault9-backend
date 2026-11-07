@@ -1,6 +1,7 @@
 flask
-requests
 flask-sqlalchemy
+requests
 anthropic
+google-generativeai
 gunicorn
 psycopg2-binary
