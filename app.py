@@ -104,13 +104,11 @@ def process_incoming_message(sender_phone, message_text):
         claude_success = False
         if anthropic_client:
             try:
-                # Format history for Anthropic (expects list of dicts with role 'user' or 'assistant')
                 anthropic_messages = []
                 for chat in recent_chats:
                     role = "user" if chat.role == "user" else "assistant"
                     anthropic_messages.append({"role": role, "content": chat.message})
                 
-                # Append current message
                 anthropic_messages.append({"role": "user", "content": message_text})
 
                 response = anthropic_client.messages.create(
@@ -189,4 +187,32 @@ def process_incoming_message(sender_phone, message_text):
         assistant_msg = ConversationHistory(sender_phone=sender_phone, role='model', message=reply_text)
         db.session.add(user_msg)
         db.session.add(assistant_msg)
-        db
+        db.session.commit()
+
+    except Exception as e:
+        print(f"Server / DB Error: {e}")
+        reply_text = f"🧠 *Vault 9 Error*: {str(e)}"
+
+    send_whatsapp_message(sender_phone, reply_text)
+
+def send_whatsapp_message(recipient_phone, text_message):
+    url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": recipient_phone,
+        "type": "text",
+        "text": {"body": text_message}
+    }
+    
+    response = requests.post(url, headers=headers, json=payload)
+    if response.status_code != 200:
+        print(f"Failed to send WhatsApp message: {response.json()}")
+    else:
+        print("WhatsApp message sent successfully.")
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
