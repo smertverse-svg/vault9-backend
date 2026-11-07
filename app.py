@@ -48,7 +48,7 @@ def home():
     return jsonify({
         "status": "Vault 9 Backend is Live", 
         "pillar": "Bridge Muunganisha", 
-        "brains": "Claude (Primary) + Gemini (Fallback)",
+        "brains": "Claude (Primary) + Gemini 3.8 Flash (Fallback)",
         "persistence": "Active"
     }), 200
 
@@ -123,7 +123,7 @@ def process_incoming_message(sender_phone, message_text):
             except Exception as claude_err:
                 print(f"Claude inference failed ({claude_err}). Falling back to Gemini...")
 
-        # --- ATTEMPT 2: Gemini API (Fallback Brain) ---
+        # --- ATTEMPT 2: Gemini API (Fallback Brain - Upgraded to gemini-3.8-flash) ---
         if not claude_success:
             print("Routing to Gemini fallback...")
             contents = []
@@ -139,7 +139,7 @@ def process_incoming_message(sender_phone, message_text):
                 "parts": [{"text": message_text}]
             })
 
-            api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+            api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
             
             payload = {
                 "system_instruction": {
