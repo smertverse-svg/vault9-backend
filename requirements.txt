@@ -1,7 +1,8 @@
-flask
-flask-sqlalchemy
+Flask
+Flask-SQLAlchemy
 requests
 anthropic
-google-generativeai
+openai
+google-genai
 gunicorn
 psycopg2-binary
