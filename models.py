@@ -28,10 +28,11 @@ class UserState(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     phone_number = db.Column(db.String(20), unique=True, nullable=False, index=True)
-    momentum_score = db.Column(db.Float, default=50.0)
-    cognitive_load = db.Column(db.String(20), default='balanced')
-    emotional_valence = db.Column(db.String(20), default='neutral')
+    momentum_score = db.Column(db.Float, default=50.0)  # 0 to 100 scale
+    cognitive_load = db.Column(db.String(20), default='balanced')  # strategic, tactical, overwhelmed
+    emotional_valence = db.Column(db.String(20), default='neutral')  # driven, stressed, fatigued, focused, neutral
     core_friction = db.Column(db.Text, nullable=True)
+    compromised_capital = db.Column(db.String(50), default='Financial')  # Tracks 9 Capitals/7 Pillars under threat
     last_updated = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 class ConversationHistory(db.Model):
@@ -39,5 +40,5 @@ class ConversationHistory(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     sender_phone = db.Column(db.String(50), index=True, nullable=False)
-    role = db.Column(db.String(20), nullable=False)
+    role = db.Column(db.String(20), nullable=False)  # 'user' or 'assistant'
     message = db.Column(db.Text, nullable=False)
