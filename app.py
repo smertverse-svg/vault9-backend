@@ -1,4 +1,5 @@
 import os
+import json
 import time
 from flask import Flask, request, jsonify
 import requests
@@ -14,12 +15,8 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI', 'sqlite:///vau
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# Define Conversation History Model for Persistence
-class ConversationHistory(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    sender_phone = db.Column(db.String(50), index=True, nullable=False)
-    role = db.Column(db.String(20), nullable=False)  # 'user' or 'assistant'
-    message = db.Column(db.Text, nullable=False)
+# Import models to ensure tables are registered
+from models import ConversationHistory, UserState, Farmer, AuditSubmission
 
 # Initialize database tables within app context
 with app.app_context():
@@ -53,7 +50,8 @@ def home():
         "status": "Vault 9 Backend is Live", 
         "pillar": "Bridge Muunganisha", 
         "brains": "OpenAI GPT-4o-mini (Primary) -> Claude 3.5 Sonnet -> Gemini 3.8 Flash",
-        "persistence": "Active"
+        "persistence": "Active",
+        "telemetry": "Enabled"
     }), 200
 
 # 1. GET /webhook: Meta Webhook Verification Handshake
@@ -96,11 +94,68 @@ def webhook():
         print(f"Webhook Error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+def analyze_user_telemetry(sender_phone, message_text):
+    """
+    Scans incoming text using GPT-4o-mini to extract cognitive telemetry,
+    updating the persistent user state profile in PostgreSQL.
+    """
+    if not openai_client:
+        return None
+
+    system_prompt = (
+        "Analyze the following user input and return a strict JSON object with these keys: "
+        "'momentum_shift' (float between -5.0 and +5.0 representing change in drive), "
+        "'cognitive_load' (one of: 'strategic', 'tactical', 'overwhelmed'), "
+        "'emotional_valence' (one of: 'driven', 'stressed', 'fatigued', 'focused', 'neutral'), "
+        "'core_friction' (a concise 1-sentence summary of their current bottleneck or flawed assumption)."
+    )
+    
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": message_text}
+            ],
+            response_format={"type": "json_object"}
+        )
+        data = json.loads(response.choices[0].message.content)
+        
+        # Update or create user state in PostgreSQL
+        state = UserState.query.filter_by(phone_number=sender_phone.strip()).first()
+        if not state:
+            state = UserState(phone_number=sender_phone.strip())
+            db.session.add(state)
+            
+        # Update metrics
+        state.momentum_score = max(0.0, min(100.0, state.momentum_score + float(data.get('momentum_shift', 0))))
+        state.cognitive_load = data.get('cognitive_load', 'balanced')
+        state.emotional_valence = data.get('emotional_valence', 'neutral')
+        state.core_friction = data.get('core_friction', '')
+        
+        db.session.commit()
+        return state
+    except Exception as e:
+        print(f"Telemetry scanning error: {e}")
+        return None
+
 def process_incoming_message(sender_phone, message_text):
     reply_text = None
     ai_success = False
 
     try:
+        # Run cognitive telemetry scan on the incoming message
+        user_state = analyze_user_telemetry(sender_phone, message_text)
+        
+        # Build dynamic context from user state if available
+        state_context = ""
+        if user_state:
+            state_context = (
+                f"\n[USER TELEMETRY CONTEXT - Momentum: {user_state.momentum_score}/100, "
+                f"Cognitive Load: {user_state.cognitive_load}, State: {user_state.emotional_valence}, "
+                f"Core Friction: {user_state.core_friction}]"
+            )
+
         # Retrieve last 5 messages from database
         recent_chats = ConversationHistory.query.filter_by(sender_phone=sender_phone)\
             .order_by(ConversationHistory.id.desc()).limit(5).all()
@@ -109,7 +164,7 @@ def process_incoming_message(sender_phone, message_text):
         # --- ATTEMPT 1: OpenAI GPT-4o-mini (PRIMARY BRAIN) ---
         if openai_client:
             try:
-                openai_messages = [{"role": "system", "content": VAULT9_SYSTEM_INSTRUCTION}]
+                openai_messages = [{"role": "system", "content": VAULT9_SYSTEM_INSTRUCTION + state_context}]
                 for chat in recent_chats:
                     role = "user" if chat.role == "user" else "assistant"
                     openai_messages.append({"role": role, "content": chat.message})
@@ -139,7 +194,7 @@ def process_incoming_message(sender_phone, message_text):
                 response = anthropic_client.messages.create(
                     model="claude-3-5-sonnet-20241022",
                     max_tokens=300,
-                    system=VAULT9_SYSTEM_INSTRUCTION,
+                    system=VAULT9_SYSTEM_INSTRUCTION + state_context,
                     messages=anthropic_messages
                 )
                 reply_text = response.content[0].text
@@ -167,7 +222,7 @@ def process_incoming_message(sender_phone, message_text):
                 
                 payload = {
                     "system_instruction": {
-                        "parts": [{"text": VAULT9_SYSTEM_INSTRUCTION}]
+                        "parts": [{"text": VAULT9_SYSTEM_INSTRUCTION + state_context}]
                     },
                     "contents": contents,
                     "generationConfig": {

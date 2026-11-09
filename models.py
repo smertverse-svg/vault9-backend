@@ -22,3 +22,17 @@ class AuditSubmission(db.Model):
     content = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(20), default='PENDING')  # PENDING, PROCESSED, FAILED
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+class UserState(db.Model):
+    __tablename__ = 'user_states'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    phone_number = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    momentum_score = db.Column(db.Float, default=50.0)  # 0 to 100 scale tracking drive/momentum
+    cognitive_load = db.Column(db.String(20), default='balanced')  # strategic, tactical, overwhelmed
+    emotional_valence = db.Column(db.String(20), default='neutral')  # driven, stressed, fatigued, focused, neutral
+    core_friction = db.Column(db.Text, nullable=True)
+    last_updated = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<UserState {self.phone_number} - Momentum: {self.momentum_score}>"
