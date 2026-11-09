@@ -36,3 +36,11 @@ class UserState(db.Model):
 
     def __repr__(self):
         return f"<UserState {self.phone_number} - Momentum: {self.momentum_score}>"
+
+class ConversationHistory(db.Model):
+    __tablename__ = 'conversation_histories'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    sender_phone = db.Column(db.String(50), index=True, nullable=False)
+    role = db.Column(db.String(20), nullable=False)  # 'user' or 'assistant'
+    message = db.Column(db.Text, nullable=False)
