@@ -3,9 +3,11 @@ import json
 import time
 from flask import Flask, request, jsonify
 import requests
-from flask_sqlalchemy import SQLAlchemy
 import anthropic
 from openai import OpenAI
+
+# Import centralized db instance
+from database import db
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -13,7 +15,9 @@ app = Flask(__name__)
 # Database configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI', 'sqlite:///vault9.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
+
+# Initialize db with app
+db.init_app(app)
 
 # Import models to ensure tables are registered
 from models import ConversationHistory, UserState, Farmer, AuditSubmission
