@@ -57,7 +57,7 @@ def home():
         "pillar": "Bridge Muunganisha", 
         "brains": "OpenAI GPT-4o-mini (Primary) -> Claude 3.5 Sonnet -> Gemini 3.8 Flash",
         "persistence": "Active",
-        "telemetry": "Advanced (Momentum-Tiered, Confidence Protocol & Whisper Audio Enabled)"
+        "telemetry": "Advanced (Momentum-Tiered, Confidence Protocol, Accessibility & Whisper Audio Enabled)"
     }), 200
 
 @app.route("/webhook", methods=["GET"])
@@ -115,7 +115,6 @@ def transcribe_whatsapp_audio(audio_id):
         return "[Audio message received, but transcription unavailable]"
     
     try:
-        # Step 1: Get media URL from Meta
         media_url_endpoint = f"https://graph.facebook.com/v21.0/{audio_id}"
         headers = {"Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}"}
         resp = requests.get(media_url_endpoint, headers=headers)
@@ -125,12 +124,10 @@ def transcribe_whatsapp_audio(audio_id):
         if not download_url:
             return "[Failed to retrieve audio download URL from Meta]"
 
-        # Step 2: Download the binary audio file
         audio_resp = requests.get(download_url, headers=headers)
         audio_file_bytes = io.BytesIO(audio_resp.content)
         audio_file_bytes.name = "voice_note.ogg"
 
-        # Step 3: Transcribe via Whisper API
         transcript = openai_client.audio.transcriptions.create(
             model="whisper-1",
             file=audio_file_bytes
@@ -191,7 +188,6 @@ def process_incoming_message(sender_phone, message_text):
     try:
         user_state = analyze_user_telemetry(sender_phone, message_text)
         
-        # Determine Momentum-Tiered Behavioral Persona Injection & Confidence Enforcement
         momentum = user_state.momentum_score if user_state else 50.0
         if momentum < 40.0:
             persona_tier_instruction = (
@@ -300,7 +296,12 @@ def process_incoming_message(sender_phone, message_text):
         print(f"Server / DB Error: {e}")
         reply_text = f"🧠 *Vault 9 Error*: {str(e)}"
 
-    send_whatsapp_message(sender_phone, reply_text)
+    # Determine accessibility preference (default to text, or 'voice' if user profile requests audio)
+    user_pref = "text"
+    if user_state and getattr(user_state, 'accessibility_preference', 'text') == 'voice':
+        user_pref = 'voice'
+
+    send_whatsapp_multimodal_response(sender_phone, reply_text, preference=user_pref)
 
 def send_whatsapp_message(recipient_phone, text_message):
     url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
@@ -317,6 +318,60 @@ def send_whatsapp_message(recipient_phone, text_message):
     response = requests.post(url, headers=headers, json=payload)
     if response.status_code != 200:
         print(f"Failed to send WhatsApp message: {response.json()}")
+
+def send_whatsapp_multimodal_response(recipient_phone, text_message, preference="text"):
+    """
+    Handles universal accessibility routing:
+    - 'text': Standard WhatsApp text message (for deaf/hard of hearing users).
+    - 'voice': Converts text response to speech (.ogg voice note) via OpenAI TTS for visually impaired users.
+    """
+    if preference == "voice" and openai_client:
+        try:
+            speech_file_path = "/tmp/vault9_response.ogg"
+            # Generate speech audio stream using OpenAI TTS
+            response = openai_client.audio.speech.create(
+                model="tts-1",
+                voice="onyx",
+                input=text_message
+            )
+            response.stream_to_file(speech_file_path)
+
+            # Step 1: Upload media to Meta WhatsApp Media Endpoint
+            upload_url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/media"
+            headers = {"Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}"}
+            
+            with open(speech_file_path, "rb") as audio_file:
+                files = {
+                    "file": ("vault9_response.ogg", audio_file, "audio/ogg"),
+                    "messaging_product": (None, "whatsapp"),
+                    "type": (None, "audio")
+                }
+                upload_resp = requests.post(upload_url, headers=headers, files=files)
+                media_data = upload_resp.json()
+                media_id = media_data.get("id")
+
+            if media_id:
+                # Step 2: Send audio message using media ID
+                msg_url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
+                msg_payload = {
+                    "messaging_product": "whatsapp",
+                    "to": recipient_phone,
+                    "type": "audio",
+                    "audio": {"id": media_id}
+                }
+                msg_resp = requests.post(msg_url, headers={"Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}", "Content-Type": "application/json"}, json=msg_payload)
+                if msg_resp.status_code != 200:
+                    print(f"Failed to send WhatsApp audio message, falling back to text: {msg_resp.json()}")
+                    send_whatsapp_message(recipient_phone, text_message)
+            else:
+                print("Failed to upload audio media to Meta, falling back to text.")
+                send_whatsapp_message(recipient_phone, text_message)
+        except Exception as e:
+            print(f"Multimodal TTS error ({e}), falling back to text.")
+            send_whatsapp_message(recipient_phone, text_message)
+    else:
+        # Default text delivery
+        send_whatsapp_message(recipient_phone, text_message)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
