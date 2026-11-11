@@ -323,7 +323,7 @@ def send_whatsapp_multimodal_response(recipient_phone, text_message, preference=
     """
     Handles universal accessibility routing:
     - 'text': Standard WhatsApp text message.
-    - 'voice': Converts text response to speech (.ogg voice note) via OpenAI TTS.
+    - 'voice': Converts text response to a true Opus/Ogg voice note via OpenAI TTS.
     """
     if preference == "voice" and openai_client:
         try:
@@ -331,7 +331,8 @@ def send_whatsapp_multimodal_response(recipient_phone, text_message, preference=
             response = openai_client.audio.speech.create(
                 model="tts-1",
                 voice="onyx",
-                input=text_message
+                input=text_message,
+                response_format="opus"
             )
             response.stream_to_file(speech_file_path)
 
