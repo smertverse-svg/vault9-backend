@@ -166,10 +166,12 @@ def analyze_user_telemetry(sender_phone, message_text):
         
         state = UserState.query.filter_by(phone_number=sender_phone.strip()).first()
         if not state:
-            state = UserState(phone_number=sender_phone.strip())
+            state = UserState(phone_number=sender_phone.strip(), momentum_score=50.0)
             db.session.add(state)
             
-        state.momentum_score = max(0.0, min(100.0, state.momentum_score + float(data.get('momentum_shift', 0))))
+        current_score = float(state.momentum_score or 50.0)
+        shift = float(data.get('momentum_shift', 0) or 0)
+        state.momentum_score = max(0.0, min(100.0, current_score + shift))
         state.cognitive_load = data.get('cognitive_load', 'balanced')
         state.emotional_valence = data.get('emotional_valence', 'neutral')
         state.core_friction = data.get('core_friction', '')
@@ -338,11 +340,13 @@ def send_whatsapp_multimodal_response(recipient_phone, text_message, preference=
             
             with open(speech_file_path, "rb") as audio_file:
                 files = {
-                    "file": ("vault9_response.ogg", audio_file, "audio/ogg"),
-                    "messaging_product": (None, "whatsapp"),
-                    "type": (None, "audio")
+                    "file": ("vault9_response.ogg", audio_file, "audio/ogg")
                 }
-                upload_resp = requests.post(upload_url, headers=headers, files=files)
+                data = {
+                    "messaging_product": "whatsapp",
+                    "type": "audio"
+                }
+                upload_resp = requests.post(upload_url, headers=headers, files=files, data=data)
                 media_data = upload_resp.json()
                 media_id = media_data.get("id")
 
@@ -359,10 +363,10 @@ def send_whatsapp_multimodal_response(recipient_phone, text_message, preference=
                     print(f"Failed to send WhatsApp audio message, falling back to text: {msg_resp.json()}")
                     send_whatsapp_message(recipient_phone, text_message)
             else:
-                print("Failed to upload audio media to Meta, falling back to text.")
+                print(f"Failed to upload audio media to Meta ({media_data}), falling back to text.")
                 send_whatsapp_message(recipient_phone, text_message)
         except Exception as e:
-            print(f"Multimodal TTS error ({e}), falling back to text locator."),
+            print(f"Multimodal TTS error ({e}), falling back to text.")
             send_whatsapp_message(recipient_phone, text_message)
     else:
         send_whatsapp_message(recipient_phone, text_message)
