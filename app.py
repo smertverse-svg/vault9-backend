@@ -57,7 +57,7 @@ def home():
         "pillar": "Bridge Muunganisha", 
         "brains": "OpenAI GPT-4o-mini (Primary) -> Claude 3.5 Sonnet -> Gemini 3.8 Flash",
         "persistence": "Active",
-        "telemetry": "Advanced (Momentum-Tiered, Confidence Protocol, Accessibility & Whisper Audio Enabled)"
+        "telemetry": "Advanced (Momentum-Tiered, Confidence Protocol, Auto-Multimodal Accessibility & Whisper Audio Enabled)"
     }), 200
 
 @app.route("/webhook", methods=["GET"])
@@ -102,7 +102,7 @@ def webhook():
                             message_text = transcribe_whatsapp_audio(audio_id)
 
                         if sender_phone and message_text:
-                            process_incoming_message(sender_phone, message_text)
+                            process_incoming_message(sender_phone, message_text, incoming_type=msg_type)
 
         return jsonify({"status": "EVENT_RECEIVED"}), 200
     except Exception as e:
@@ -181,7 +181,7 @@ def analyze_user_telemetry(sender_phone, message_text):
         print(f"Telemetry scanning error: {e}")
         return None
 
-def process_incoming_message(sender_phone, message_text):
+def process_incoming_message(sender_phone, message_text, incoming_type="text"):
     reply_text = None
     ai_success = False
 
@@ -296,10 +296,8 @@ def process_incoming_message(sender_phone, message_text):
         print(f"Server / DB Error: {e}")
         reply_text = f"🧠 *Vault 9 Error*: {str(e)}"
 
-    # Determine accessibility preference (default to text, or 'voice' if user profile requests audio)
-    user_pref = "text"
-    if user_state and getattr(user_state, 'accessibility_preference', 'text') == 'voice':
-        user_pref = 'voice'
+    # Automatically match the input medium: audio in -> voice note out; text in -> text out
+    user_pref = "voice" if incoming_type == "audio" else "text"
 
     send_whatsapp_multimodal_response(sender_phone, reply_text, preference=user_pref)
 
@@ -322,13 +320,12 @@ def send_whatsapp_message(recipient_phone, text_message):
 def send_whatsapp_multimodal_response(recipient_phone, text_message, preference="text"):
     """
     Handles universal accessibility routing:
-    - 'text': Standard WhatsApp text message (for deaf/hard of hearing users).
-    - 'voice': Converts text response to speech (.ogg voice note) via OpenAI TTS for visually impaired users.
+    - 'text': Standard WhatsApp text message.
+    - 'voice': Converts text response to speech (.ogg voice note) via OpenAI TTS.
     """
     if preference == "voice" and openai_client:
         try:
             speech_file_path = "/tmp/vault9_response.ogg"
-            # Generate speech audio stream using OpenAI TTS
             response = openai_client.audio.speech.create(
                 model="tts-1",
                 voice="onyx",
@@ -336,7 +333,6 @@ def send_whatsapp_multimodal_response(recipient_phone, text_message, preference=
             )
             response.stream_to_file(speech_file_path)
 
-            # Step 1: Upload media to Meta WhatsApp Media Endpoint
             upload_url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/media"
             headers = {"Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}"}
             
@@ -351,7 +347,6 @@ def send_whatsapp_multimodal_response(recipient_phone, text_message, preference=
                 media_id = media_data.get("id")
 
             if media_id:
-                # Step 2: Send audio message using media ID
                 msg_url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
                 msg_payload = {
                     "messaging_product": "whatsapp",
@@ -367,10 +362,9 @@ def send_whatsapp_multimodal_response(recipient_phone, text_message, preference=
                 print("Failed to upload audio media to Meta, falling back to text.")
                 send_whatsapp_message(recipient_phone, text_message)
         except Exception as e:
-            print(f"Multimodal TTS error ({e}), falling back to text.")
+            print(f"Multimodal TTS error ({e}), falling back to text locator."),
             send_whatsapp_message(recipient_phone, text_message)
     else:
-        # Default text delivery
         send_whatsapp_message(recipient_phone, text_message)
 
 if __name__ == "__main__":
