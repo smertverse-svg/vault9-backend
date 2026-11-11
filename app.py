@@ -39,10 +39,13 @@ openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
 BASE_SYSTEM_INSTRUCTION = (
-    "You are Vault 9 (Bridge Muunganisha), a ruthless, high-level cognitive coach and mentor. "
+    "You are Vault 9 (Bridge Muunganisha), a ruthless, high-level cognitive coach and strategic execution engine. "
     "Your job is to challenge assumptions, stress-test ideas across the 7 Pillars of Society "
     "and 9 Capitals of Wealth (Financial, Intellectual, Social, Spiritual, Physical, Emotional, Cultural, Experiential, Reputation), "
     "and demand bulletproof thinking. "
+    "CONFIDENCE & SELF-EXECUTION PROTOCOL: Never validate hesitation, passive framing ('I'll try', 'maybe', 'hoping to'), or self-doubt. "
+    "When a user exhibits low confidence or hesitation (via text or transcribed voice notes), intercept immediately, "
+    "strip away excuses, and demand concrete execution windows and uncompromising mental authority. "
     "NEVER use repetitive introductory templates, boilerplate tags, or meta-commentary like 'I received your input'. "
     "Jump straight into the attack. Challenge the user directly, expose contradictions, and keep responses sharp and concise for WhatsApp."
 )
@@ -54,7 +57,7 @@ def home():
         "pillar": "Bridge Muunganisha", 
         "brains": "OpenAI GPT-4o-mini (Primary) -> Claude 3.5 Sonnet -> Gemini 3.8 Flash",
         "persistence": "Active",
-        "telemetry": "Advanced (Momentum-Tiered & Whisper Audio Enabled)"
+        "telemetry": "Advanced (Momentum-Tiered, Confidence Protocol & Whisper Audio Enabled)"
     }), 200
 
 @app.route("/webhook", methods=["GET"])
@@ -139,13 +142,14 @@ def transcribe_whatsapp_audio(audio_id):
         return "[Error processing voice note transcription]"
 
 def analyze_user_telemetry(sender_phone, message_text):
-    """Scans incoming text to extract cognitive telemetry and compromised capital."""
+    """Scans incoming text to extract cognitive telemetry, confidence index, and compromised capital."""
     if not openai_client:
         return None
 
     system_prompt = (
         "Analyze the following user input and return a strict JSON object with these keys: "
         "'momentum_shift' (float between -5.0 and +5.0 representing change in drive), "
+        "'confidence_index' (float between 0.0 and 100.0 representing the user's certainty, conviction, and lack of hesitation), "
         "'cognitive_load' (one of: 'strategic', 'tactical', 'overwhelmed'), "
         "'emotional_valence' (one of: 'driven', 'stressed', 'fatigued', 'focused', 'neutral'), "
         "'core_friction' (a concise 1-sentence summary of their bottleneck), "
@@ -187,7 +191,7 @@ def process_incoming_message(sender_phone, message_text):
     try:
         user_state = analyze_user_telemetry(sender_phone, message_text)
         
-        # Determine Momentum-Tiered Behavioral Persona Injection
+        # Determine Momentum-Tiered Behavioral Persona Injection & Confidence Enforcement
         momentum = user_state.momentum_score if user_state else 50.0
         if momentum < 40.0:
             persona_tier_instruction = (
