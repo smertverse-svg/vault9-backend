@@ -53,12 +53,74 @@ BASE_SYSTEM_INSTRUCTION = (
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
-        "status": "Vault 9 Backend is Live", 
-        "pillar": "Bridge Muunganisha", 
+        "status": "Vault 9 Backend is Live",
+        "pillar": "Bridge Muunganisha",
         "brains": "OpenAI GPT-4o-mini (Primary) -> Claude 3.5 Sonnet -> Gemini 3.8 Flash",
         "persistence": "Active",
         "telemetry": "Advanced (Momentum-Tiered, Confidence Protocol, Auto-Multimodal Accessibility & Whisper Audio Enabled)"
     }), 200
+
+@app.route("/privacy", methods=["GET"])
+def privacy_policy():
+    html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy - Vault 9 (Bridge Muunganisha)</title>
+  <style>
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.6;
+      max-width: 780px;
+      margin: 40px auto;
+      padding: 0 20px;
+      color: #1f2937;
+      background-color: #f9fafb;
+    }
+    h1, h2 {
+      color: #111827;
+    }
+    .card {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 28px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Privacy Policy for Vault 9 (Bridge Muunganisha)</h1>
+    <p><strong>Last Updated:</strong> November 23, 2026</p>
+
+    <p>Vault 9 ("we," "our," or "us") provides an automated cognitive coaching and strategic execution service via WhatsApp. This Privacy Policy explains what information we collect, how we use it, and how you can request deletion of your data.</p>
+
+    <h2>1. Information We Collect</h2>
+    <ul>
+      <li><strong>WhatsApp Contact &amp; Message Content:</strong> When you message Vault 9 on WhatsApp, we receive your phone number, message text, and audio voice notes (which are transcribed to text to generate responses).</li>
+      <li><strong>Coaching &amp; Session State:</strong> We store recent conversation history and coaching state/telemetry used to maintain context and tailor responses.</li>
+    </ul>
+
+    <h2>2. How We Use Information</h2>
+    <ul>
+      <li>To transcribe voice messages, generate coaching responses, and match your preferred response format (voice or text).</li>
+      <li>To operate, maintain, troubleshoot, and secure the Vault 9 service.</li>
+      <li>We do not sell user data or use platform data for unauthorized profiling or data brokers.</li>
+    </ul>
+
+    <h2>3. Third-Party Service Providers</h2>
+    <p>Messages and audio inputs may be transmitted to hosting and AI processing providers strictly as necessary to generate your requested coaching response and deliver WhatsApp messages.</p>
+
+    <h2>4. Data Retention &amp; Deletion Instructions</h2>
+    <p>We retain conversation and session records as needed to provide the service. To request deletion of your data, email <a href="mailto:smertverse@gmail.com">smertverse@gmail.com</a> with the subject line <strong>"Vault 9 Data Deletion Request"</strong> and include the WhatsApp phone number you used with Vault 9. We will process verified deletion requests promptly.</p>
+
+    <h2>5. Contact</h2>
+    <p>For privacy questions or data deletion requests, contact <a href="mailto:smertverse@gmail.com">smertverse@gmail.com</a>.</p>
+  </div>
+</body>
+</html>"""
+    return html, 200
 
 @app.route("/webhook", methods=["GET"])
 def verify():
@@ -75,7 +137,7 @@ def verify():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    body = request.get_json()
+    body = request.get_json(silent=True)
     print("Incoming WhatsApp Payload:", body)
 
     try:
@@ -113,18 +175,18 @@ def transcribe_whatsapp_audio(audio_id):
     """Downloads a WhatsApp audio file using Meta Graph API and transcribes it via OpenAI Whisper."""
     if not openai_client or not audio_id:
         return "[Audio message received, but transcription unavailable]"
-    
+
     try:
         media_url_endpoint = f"https://graph.facebook.com/v21.0/{audio_id}"
         headers = {"Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}"}
-        resp = requests.get(media_url_endpoint, headers=headers)
+        resp = requests.get(media_url_endpoint, headers=headers, timeout=(5, 15))
         media_data = resp.json()
         download_url = media_data.get("url")
 
         if not download_url:
             return "[Failed to retrieve audio download URL from Meta]"
 
-        audio_resp = requests.get(download_url, headers=headers)
+        audio_resp = requests.get(download_url, headers=headers, timeout=(5, 30))
         audio_file_bytes = io.BytesIO(audio_resp.content)
         audio_file_bytes.name = "voice_note.ogg"
 
@@ -152,7 +214,7 @@ def analyze_user_telemetry(sender_phone, message_text):
         "'core_friction' (a concise 1-sentence summary of their bottleneck), "
         "'compromised_capital' (name of the specific Capital of Wealth or Pillar under threat, e.g., 'Financial', 'Physical', 'Reputation')."
     )
-    
+
     try:
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
@@ -163,12 +225,12 @@ def analyze_user_telemetry(sender_phone, message_text):
             response_format={"type": "json_object"}
         )
         data = json.loads(response.choices[0].message.content)
-        
+
         state = UserState.query.filter_by(phone_number=sender_phone.strip()).first()
         if not state:
             state = UserState(phone_number=sender_phone.strip(), momentum_score=50.0)
             db.session.add(state)
-            
+
         current_score = float(state.momentum_score or 50.0)
         shift = float(data.get('momentum_shift', 0) or 0)
         state.momentum_score = max(0.0, min(100.0, current_score + shift))
@@ -176,10 +238,11 @@ def analyze_user_telemetry(sender_phone, message_text):
         state.emotional_valence = data.get('emotional_valence', 'neutral')
         state.core_friction = data.get('core_friction', '')
         state.compromised_capital = data.get('compromised_capital', 'Financial')
-        
+
         db.session.commit()
         return state
     except Exception as e:
+        db.session.rollback()
         print(f"Telemetry scanning error: {e}")
         return None
 
@@ -189,7 +252,7 @@ def process_incoming_message(sender_phone, message_text, incoming_type="text"):
 
     try:
         user_state = analyze_user_telemetry(sender_phone, message_text)
-        
+
         momentum = user_state.momentum_score if user_state else 50.0
         if momentum < 40.0:
             persona_tier_instruction = (
@@ -295,6 +358,7 @@ def process_incoming_message(sender_phone, message_text, incoming_type="text"):
         db.session.commit()
 
     except Exception as e:
+        db.session.rollback()
         print(f"Server / DB Error: {e}")
         reply_text = f"🧠 *Vault 9 Error*: {str(e)}"
 
@@ -315,7 +379,7 @@ def send_whatsapp_message(recipient_phone, text_message):
         "type": "text",
         "text": {"body": text_message}
     }
-    response = requests.post(url, headers=headers, json=payload)
+    response = requests.post(url, headers=headers, json=payload, timeout=(5, 15))
     if response.status_code != 200:
         print(f"Failed to send WhatsApp message: {response.json()}")
 
@@ -338,7 +402,7 @@ def send_whatsapp_multimodal_response(recipient_phone, text_message, preference=
 
             upload_url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/media"
             headers = {"Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}"}
-            
+
             with open(speech_file_path, "rb") as audio_file:
                 files = {
                     "file": ("vault9_response.ogg", audio_file, "audio/ogg")
@@ -347,7 +411,7 @@ def send_whatsapp_multimodal_response(recipient_phone, text_message, preference=
                     "messaging_product": "whatsapp",
                     "type": "audio"
                 }
-                upload_resp = requests.post(upload_url, headers=headers, files=files, data=data)
+                upload_resp = requests.post(upload_url, headers=headers, files=files, data=data, timeout=(5, 30))
                 media_data = upload_resp.json()
                 media_id = media_data.get("id")
 
@@ -359,7 +423,12 @@ def send_whatsapp_multimodal_response(recipient_phone, text_message, preference=
                     "type": "audio",
                     "audio": {"id": media_id}
                 }
-                msg_resp = requests.post(msg_url, headers={"Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}", "Content-Type": "application/json"}, json=msg_payload)
+                msg_resp = requests.post(
+                    msg_url,
+                    headers={"Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}", "Content-Type": "application/json"},
+                    json=msg_payload,
+                    timeout=(5, 15)
+                )
                 if msg_resp.status_code != 200:
                     print(f"Failed to send WhatsApp audio message, falling back to text: {msg_resp.json()}")
                     send_whatsapp_message(recipient_phone, text_message)
