@@ -177,6 +177,59 @@ def terms_of_service():
 </html>"""
     return html, 200
 
+@app.route("/data-deletion", methods=["GET"])
+def data_deletion():
+    html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>User Data Deletion - Vault 9 (Bridge Muunganisha)</title>
+  <style>
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.6;
+      max-width: 780px;
+      margin: 40px auto;
+      padding: 0 20px;
+      color: #1f2937;
+      background-color: #f9fafb;
+    }
+    h1, h2 {
+      color: #111827;
+    }
+    .card {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 28px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>User Data Deletion Instructions - Vault 9 (Bridge Muunganisha)</h1>
+    <p><strong>Last Updated:</strong> November 23, 2026</p>
+
+    <p>Users of Vault 9 may request deletion of their stored WhatsApp conversation history and coaching state/telemetry data at any time.</p>
+
+    <h2>How to Request Data Deletion</h2>
+    <ol>
+      <li>Send an email to <a href="mailto:smertverse@gmail.com">smertverse@gmail.com</a>.</li>
+      <li>Use the subject line: <strong>Vault 9 Data Deletion Request</strong>.</li>
+      <li>Include the <strong>WhatsApp phone number</strong> (with country code) used to interact with Vault 9 so we can locate and delete matching records.</li>
+    </ol>
+
+    <h2>What Data Is Deleted</h2>
+    <p>Upon verifying your request, we delete associated stored message history and coaching session state tied to that WhatsApp phone number, except where retention is required by law or security logs.</p>
+
+    <h2>Support Contact</h2>
+    <p>For assistance with data deletion requests, contact <a href="mailto:smertverse@gmail.com">smertverse@gmail.com</a>.</p>
+  </div>
+</body>
+</html>"""
+    return html, 200
+
 @app.route("/webhook", methods=["GET"])
 def verify():
     mode = request.args.get("hub.mode")
