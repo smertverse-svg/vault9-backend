@@ -122,6 +122,61 @@ def privacy_policy():
 </html>"""
     return html, 200
 
+@app.route("/terms", methods=["GET"])
+def terms_of_service():
+    html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Terms of Service - Vault 9 (Bridge Muunganisha)</title>
+  <style>
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.6;
+      max-width: 780px;
+      margin: 40px auto;
+      padding: 0 20px;
+      color: #1f2937;
+      background-color: #f9fafb;
+    }
+    h1, h2 {
+      color: #111827;
+    }
+    .card {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 28px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Terms of Service for Vault 9 (Bridge Muunganisha)</h1>
+    <p><strong>Last Updated:</strong> November 23, 2026</p>
+
+    <p>By interacting with Vault 9 ("we," "our," or "us") via WhatsApp or related services, you agree to these Terms of Service.</p>
+
+    <h2>1. Nature of the Service</h2>
+    <p>Vault 9 provides automated cognitive coaching, strategic questioning, and execution accountability through text and voice messages. Responses are generated with AI systems and are intended for personal and strategic development only, not as legal, financial, medical, or clinical advice.</p>
+
+    <h2>2. Acceptable Use</h2>
+    <p>You agree to use Vault 9 lawfully and responsibly. Do not send unlawful, abusive, harmful, or disruptive traffic, or attempt to interfere with service operations.</p>
+
+    <h2>3. Availability &amp; Updates</h2>
+    <p>We may update, modify, suspend, or discontinue features or integrations at any time without prior notice, and we do not guarantee uninterrupted or error-free operation.</p>
+
+    <h2>4. Limitation of Liability</h2>
+    <p>To the fullest extent permitted by law, Vault 9 is provided "as is" without warranties of any kind, and we are not liable for decisions made or actions taken based on generated responses or service interruptions.</p>
+
+    <h2>5. Contact</h2>
+    <p>Questions about these terms can be sent to <a href="mailto:smertverse@gmail.com">smertverse@gmail.com</a>.</p>
+  </div>
+</body>
+</html>"""
+    return html, 200
+
 @app.route("/webhook", methods=["GET"])
 def verify():
     mode = request.args.get("hub.mode")
@@ -386,8 +441,8 @@ def send_whatsapp_message(recipient_phone, text_message):
 def send_whatsapp_multimodal_response(recipient_phone, text_message, preference="text"):
     """
     Handles universal accessibility routing:
-    - 'text': Standard WhatsApp text message.
-    - 'voice': Converts text response to a true Opus/Ogg voice note via OpenAI TTS.
+- 'text': Standard WhatsApp text message.
+- 'voice': Converts text response to a true Opus/Ogg voice note via OpenAI TTS.
     """
     if preference == "voice" and openai_client:
         try:
